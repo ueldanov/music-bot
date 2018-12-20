@@ -1,7 +1,7 @@
 import asyncio
 import discord
+import time
 from related import Related
-
 from discord.ext import commands
 
 if not discord.opus.is_loaded():
@@ -20,14 +20,11 @@ class VoiceEntry:
         self.player = player
 
     def __str__(self):
-        fmt = '*{0.title}* uploaded by {0.uploader} and requested by {1.display_name}'
+        fmt = '*{0.title}*'
         duration = self.player.duration
         if duration:
             fmt = fmt + ' [length: {0[0]}m {0[1]}s]'.format(divmod(duration, 60))
         return fmt.format(self.player, self.requester)
-
-    def title(self):
-        return self.player.title
 
 
 class VoiceState:
@@ -58,54 +55,57 @@ class VoiceState:
         if self.is_playing():
             self.player.stop()
 
-    async def add_auto(self):
-        state = self
-        if state.auto is True:
-            player = state.current.player
-            try:
-                yt_id = player.yt.extract_info(player.url, download=False)["entries"][0]["id"]
-            except:
-                yt_id = player.yt.extract_info(player.url, download=False)["id"]
-            state.songs_history.append(yt_id)
-            related_song = Related().url_to_first_related(yt_id, state.songs_history)
-            opts = {
-                'default_search': 'auto',
-                'quiet': True,
-            }
-            try:
-                player = await state.voice.create_ytdl_player(
-                    related_song,
-                    ytdl_options=opts
-                )
-            except Exception as e:
-                fmt = 'An error occurred while processing this request: ```py\n{}: {}\n```'
-                # await self.bot.send_message(ctx.message.channel, fmt.format(type(e).__name__, e))
-            else:
-                player.volume = 0.6
-                entry = VoiceEntry(player)
-                await self.bot.say('Enqueued ' + str(entry))
-                await state.songs.put(entry)
-            print("empty:{}".format(state.songs.empty()))
-            await self.play_next_song.wait()
-
     def toggle_next(self):
-        self.bot.loop.call_soon_threadsafe(self.play_next_song.set)
+        # asyncio.run_coroutine_threadsafe(self.play_next(), bot.loop)
+        print('toggle 1')
+        self.bot.loop.create_task(self.play_next())
+        # self.bot.loop.call_soon_threadsafe(self.play_next())
+        # self.bot.loop.call_soon_threadsafe(self.play_next_song.set)
+        print('toggle 3')
+
+    async def play_next(self):
+        print('play_next')
+        opts = {
+            'default_search': 'auto',
+            'quiet': True,
+        }
+        try:
+            print('try')
+            player = await self.voice.create_ytdl_player('llama in my living room', ytdl_options=opts)
+
+            print('try end')
+        except Exception as e:
+            fmt = 'An error occurred while processing this request: py\n{}: {}\n'
+        else:
+            print('else')
+            player.volume = 0.6
+            entry = VoiceEntry(player)
+            print('else 2')
+            # await self.bot.say('Enqueued ' + str(entry))
+            print('else 3')
+            await self.songs.put(entry)
+            print(self.songs.empty())
+            print('else end')
+
+            self.bot.loop.call_soon_threadsafe(self.play_next_song.set)
 
     async def audio_player_task(self):
         while True:
+            print('task {}'.format(time.ctime()))
+            print(self.songs.empty())
             self.play_next_song.clear()
-            if self.songs.empty():
-                await self.add_auto()
-                print('queue is empty')
             self.current = await self.songs.get()
-            await self.bot.send_message(self.current.channel, 'Now playing ' + str(self.current))
+            print(str(self.current))
+            print(self.current.channel)
+            if self.current.channel:
+                await self.bot.send_message(self.current.channel, 'Now playing ' + str(self.current))
             self.current.player.start()
-            # await self.play_next_song.wait()
-            await asyncio.wait([self.add_auto()])
+            await self.play_next_song.wait()
 
 
 class Music:
     """Voice related commands.
+
     Works in multiple servers at once.
     """
 
@@ -156,8 +156,7 @@ class Music:
             return False
 
         state = self.get_voice_state(ctx.message.server)
-        if state. \
-                voice is None:
+        if state.voice is None:
             state.voice = await self.bot.join_voice_channel(summoned_channel)
         else:
             await state.voice.move_to(summoned_channel)
@@ -167,8 +166,10 @@ class Music:
     @commands.command(pass_context=True, no_pm=True)
     async def play(self, ctx, *, song: str):
         """Plays a song.
+
         If there is a song currently in the queue, then it is
         queued until the next song is done playing.
+
         This command automatically searches as well from YouTube.
         The list of supported sites can be found here:
         https://rg3.github.io/youtube-dl/supportedsites.html
@@ -185,7 +186,7 @@ class Music:
                 return
 
         try:
-            player = await state.voice.create_ytdl_player(song, ytdl_options=opts, after=state.toggle_next())
+            player = await state.voice.create_ytdl_player(song, ytdl_options=opts, after=state.toggle_next)
         except Exception as e:
             fmt = 'An error occurred while processing this request: ```py\n{}: {}\n```'
             await self.bot.send_message(ctx.message.channel, fmt.format(type(e).__name__, e))
@@ -194,14 +195,6 @@ class Music:
             entry = VoiceEntry(player, ctx.message)
             await self.bot.say('Enqueued ' + str(entry))
             await state.songs.put(entry)
-
-    @commands.command(pass_context=True, no_pm=True)
-    async def autoplay(self, ctx):
-        state = self.get_voice_state(ctx.message.server)
-
-        print("before: {}".format(state.auto))
-        state.auto = not state.auto
-        print("after: {}".format(state.auto))
 
     @commands.command(pass_context=True, no_pm=True)
     async def volume(self, ctx, value: int):
@@ -232,6 +225,7 @@ class Music:
     @commands.command(pass_context=True, no_pm=True)
     async def stop(self, ctx):
         """Stops playing audio and leaves the voice channel.
+
         This also clears the queue.
         """
         server = ctx.message.server
@@ -251,6 +245,7 @@ class Music:
     @commands.command(pass_context=True, no_pm=True)
     async def skip(self, ctx):
         """Vote to skip a song. The song requester can automatically skip.
+
         3 skip votes are needed for the song to be skipped.
         """
 
@@ -263,42 +258,14 @@ class Music:
         if voter == state.current.requester:
             await self.bot.say('Requester requested skipping song...')
             state.skip()
-            if state.songs.empty():
-                if state.auto is True:
-                    player = state.current.player
-                    try:
-                        yt_id = player.yt.extract_info(player.url, download=False)["entries"][0]["id"]
-                    except:
-                        yt_id = player.yt.extract_info(player.url, download=False)["id"]
-                    state.songs_history.append(yt_id)
-                    related_song = Related().url_to_first_related(yt_id, state.songs_history)
-                    opts = {
-                        'default_search': 'auto',
-                        'quiet': True,
-                    }
-                    try:
-                        player = await state.voice.create_ytdl_player(
-                            related_song,
-                            ytdl_options=opts,
-                            after=state.toggle_next()
-                        )
-                    except Exception as e:
-                        fmt = 'An error occurred while processing this request: ```py\n{}: {}\n```'
-                        await self.bot.send_message(ctx.message.channel, fmt.format(type(e).__name__, e))
-                    else:
-                        player.volume = 0.6
-                        entry = VoiceEntry(player, ctx.message)
-                        await self.bot.say('Enqueued ' + str(entry))
-                        await state.songs.put(entry)
         elif voter.id not in state.skip_votes:
             state.skip_votes.add(voter.id)
             total_votes = len(state.skip_votes)
-            need_votes = 1
-            if total_votes >= need_votes:
+            if total_votes >= 3:
                 await self.bot.say('Skip vote passed, skipping song...')
                 state.skip()
             else:
-                await self.bot.say('Skip vote added, currently at [{}/{}]'.format(total_votes, need_votes))
+                await self.bot.say('Skip vote added, currently at [{}/3]'.format(total_votes))
         else:
             await self.bot.say('You have already voted to skip this song.')
 
