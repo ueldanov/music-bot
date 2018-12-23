@@ -3,6 +3,7 @@ import discord
 import time
 from related import Related
 from discord.ext import commands
+from pprint import pprint
 
 if not discord.opus.is_loaded():
     # the 'opus' library here is opus.dll on windows
@@ -56,12 +57,7 @@ class VoiceState:
             self.player.stop()
 
     def toggle_next(self):
-        # asyncio.run_coroutine_threadsafe(self.play_next(), bot.loop)
-        print('toggle 1')
         self.bot.loop.create_task(self.play_next())
-        # self.bot.loop.call_soon_threadsafe(self.play_next())
-        # self.bot.loop.call_soon_threadsafe(self.play_next_song.set)
-        print('toggle 3')
 
     async def play_next(self):
         print('play_next')
@@ -69,38 +65,44 @@ class VoiceState:
             'default_search': 'auto',
             'quiet': True,
         }
+        player = self.current.player
         try:
             print('try')
-            player = await self.voice.create_ytdl_player('llama in my living room', ytdl_options=opts)
-
-            print('try end')
-        except Exception as e:
-            fmt = 'An error occurred while processing this request: py\n{}: {}\n'
+            yt_id = player.yt.extract_info(player.url, download=False)["entries"][0]["id"]
+        except:
+            print('except')
+            yt_id = player.yt.extract_info(player.url, download=False)["id"]
+        print('fin')
+        self.songs_history.append(yt_id)
+        related_song = Related().url_to_first_related(yt_id, self.songs_history)
+        print('related: ' + str(related_song))
+        if related_song is None:
+            print('Can\'t find related songs')
         else:
-            print('else')
-            player.volume = 0.6
-            entry = VoiceEntry(player)
-            print('else 2')
-            # await self.bot.say('Enqueued ' + str(entry))
-            print('else 3')
-            await self.songs.put(entry)
-            print(self.songs.empty())
-            print('else end')
-
-            self.bot.loop.call_soon_threadsafe(self.play_next_song.set)
+            try:
+                player = await self.voice.create_ytdl_player(related_song, ytdl_options=opts)
+            except Exception as e:
+                fmt = 'An error occurred while processing this request: py\n{}: {}\n'
+            else:
+                player.volume = 0.6
+                entry = VoiceEntry(player)
+                await self.songs.put(entry)
+        print('play next end')
+        self.bot.loop.call_soon_threadsafe(self.play_next_song.set)
 
     async def audio_player_task(self):
         while True:
             print('task {}'.format(time.ctime()))
-            print(self.songs.empty())
             self.play_next_song.clear()
             self.current = await self.songs.get()
-            print(str(self.current))
-            print(self.current.channel)
+            print('song\'s name: ' + str(self.current))
+            print('channel: ' + str(self.current.channel))
             if self.current.channel:
                 await self.bot.send_message(self.current.channel, 'Now playing ' + str(self.current))
             self.current.player.start()
+            print('started')
             await self.play_next_song.wait()
+            print('waited')
 
 
 class Music:
@@ -249,6 +251,7 @@ class Music:
         3 skip votes are needed for the song to be skipped.
         """
 
+        print('skip start')
         state = self.get_voice_state(ctx.message.server)
         if not state.is_playing():
             await self.bot.say('Not playing any music right now...')
@@ -261,13 +264,15 @@ class Music:
         elif voter.id not in state.skip_votes:
             state.skip_votes.add(voter.id)
             total_votes = len(state.skip_votes)
-            if total_votes >= 3:
+            need_votes = 1
+            if total_votes >= need_votes:
                 await self.bot.say('Skip vote passed, skipping song...')
                 state.skip()
             else:
-                await self.bot.say('Skip vote added, currently at [{}/3]'.format(total_votes))
+                await self.bot.say('Skip vote added, currently at [{}/{}]'.format(total_votes, need_votes))
         else:
             await self.bot.say('You have already voted to skip this song.')
+        print('skip end')
 
     @commands.command(pass_context=True, no_pm=True)
     async def playing(self, ctx):

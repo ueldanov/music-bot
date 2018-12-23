@@ -15,10 +15,13 @@ class Related:
         if excluded_items is None:
             excluded_items = []
         songs = self.related_songs(yt_id).json()
-        for item in songs['items']:
-            if item['id']['videoId'] not in excluded_items:
-                if self.in_music_category(item['id']['videoId']):
-                    return 'https://www.youtube.com/watch?v={}'.format(item['id']['videoId'])
+        try:
+            for item in songs['items']:
+                if item['id']['videoId'] not in excluded_items:
+                    if self.in_music_category(item['id']['videoId']):
+                        return 'https://www.youtube.com/watch?v={}'.format(item['id']['videoId'])
+        except:
+            pass
         return None
 
     def in_music_category(self, yt_id):
