@@ -80,7 +80,7 @@ class VoiceState:
             print('Can\'t find related songs')
         else:
             try:
-                player = await self.voice.create_ytdl_player(related_song, ytdl_options=opts)
+                player = await self.voice.create_ytdl_player(related_song, ytdl_options=opts, after=self.toggle_next)
             except Exception as e:
                 fmt = 'An error occurred while processing this request: py\n{}: {}\n'
             else:

@@ -28,7 +28,6 @@ class Related:
         result = requests.get(
             'https://www.googleapis.com/youtube/v3/videos?part=snippet&id={}&key={}'.format(yt_id, self.yt_api_key)
         )
-        return True
         try:
             if result.json()['items'][0]['snippet']['categoryId'] == '10':
                 print(yt_id)
