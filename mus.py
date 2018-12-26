@@ -38,6 +38,7 @@ class VoiceState:
         self.play_next_song = asyncio.Event()
         self.songs = asyncio.Queue()
         self.songs_history = []
+        self.entries_history = []
         self.skip_votes = set()  # a set of user_ids that voted
         self.audio_player = self.bot.loop.create_task(self.audio_player_task())
 
@@ -82,18 +83,13 @@ class VoiceState:
             if message:
                 await self.bot.say('Enqueued ' + str(entry))
             await self.songs.put(entry)
+            self.entries_history.append(entry)
 
     async def play_next(self):
-        print('play_next')
-        opts = {
-            'default_search': 'auto',
-            'quiet': True,
-        }
         player = self.current.player
         try:
             yt_id = player.yt.extract_info(player.url, download=False)["entries"][0]["id"]
         except:
-            print('except')
             yt_id = player.yt.extract_info(player.url, download=False)["id"]
         self.songs_history.append(yt_id)
         related_song = Related().url_to_first_related(yt_id, self.songs_history)
@@ -284,6 +280,25 @@ class Music:
         else:
             skip_count = len(state.skip_votes)
             await self.bot.say('Now playing {} [skips: {}/3]'.format(state.current, skip_count))
+
+    @commands.command(pass_context=True, no_pm=True)
+    async def queue(self, ctx, ):
+        state = self.get_voice_state(ctx.message.server)
+        if state.entries_history is []:
+            await self.bot.say('Queue is empty')
+        else:
+            embed = discord.Embed(
+                title='Queue',
+                colou=discord.Color.blue()
+            )
+            embed.set_author(name="It's me", url="https://vk.com/kaless1n")
+            queue = ''
+            i = 0
+            for entry in state.entries_history:
+                i += 1
+                queue += str(i) + '. ' + '[' + str(entry) + ']' + '(https://www.youtube.com/watch?v=d4oG8_3j58U)' + "\n"
+            embed.set_footer(text=queue)
+            await self.bot.say(embed=embed)
 
 
 bot = commands.Bot(command_prefix=commands.when_mentioned_or('='), description='A playlist example for discord.py')
