@@ -21,11 +21,15 @@ class VoiceEntry:
         self.player = player
 
     def __str__(self):
-        fmt = '*{0.title}*'
+        fmt = '*[{0.title}]({2})*'
+        if 'http' in self.player.url:
+            url = self.player.url
+        else:
+            url = ''
         duration = self.player.duration
         if duration:
             fmt = fmt + ' [length: {0[0]}m {0[1]}s]'.format(divmod(duration, 60))
-        return fmt.format(self.player, self.requester)
+        return fmt.format(self.player, self.requester, url)
 
 
 class VoiceState:
@@ -73,7 +77,7 @@ class VoiceState:
             if channel:
                 await self.bot.send_message(channel, fmt.format(type(e).__name__, e))
         else:
-            player.volume = 0.6
+            player.volume = 0.3
             requester = message.author if message else None
             if channel is None:
                 channel = self.channel
@@ -81,7 +85,11 @@ class VoiceState:
                 self.channel = channel
             entry = VoiceEntry(player, channel, requester)
             if message:
-                await self.bot.say('Enqueued ' + str(entry))
+                embed = discord.Embed(
+                    colou=discord.Color.blue()
+                )
+                embed.add_field(name='Enqueued', value=str(entry))
+                await self.bot.say(embed=embed)
             await self.songs.put(entry)
             self.entries_history.append(entry)
 
@@ -104,14 +112,16 @@ class VoiceState:
             print('task {}'.format(time.ctime()))
             self.play_next_song.clear()
             self.current = await self.songs.get()
-            print('song\'s name: ' + str(self.current))
-            print('channel: ' + str(self.current.channel))
             if self.current.channel:
-                await self.bot.send_message(self.current.channel, 'Now playing ' + str(self.current))
+                embed = discord.Embed(
+                    colour=discord.Color.blue()
+                )
+                field = str(self.current)
+                embed.add_field(name='Now playing', value=field)
+                await self.bot.send_message(self.current.channel, embed=embed)
+                # await self.bot.send_message(self.current.channel, 'Now playing ' + str(self.current))
             self.current.player.start()
-            print('started')
             await self.play_next_song.wait()
-            print('waited')
 
 
 class Music:
@@ -202,7 +212,13 @@ class Music:
         if state.is_playing():
             player = state.player
             player.volume = value / 100
-            await self.bot.say('Set the volume to {:.0%}'.format(player.volume))
+            embed = discord.Embed(
+                colour=discord.Color.blue()
+            )
+            embed.set_author(name="It's me", url="https://vk.com/kaless1n")
+            field = 'Set the volume to {:.0%}'.format(player.volume)
+            embed.add_field(name='Queue', value=field)
+            await self.bot.say(embed=embed)
 
     @commands.command(pass_context=True, no_pm=True)
     async def pause(self, ctx):
@@ -246,29 +262,21 @@ class Music:
 
         3 skip votes are needed for the song to be skipped.
         """
-
-        print('skip start')
         state = self.get_voice_state(ctx.message.server)
+        embed = discord.Embed(
+            colour=discord.Color.blue()
+        )
+        embed.set_author(name="It's me", url="https://vk.com/kaless1n")
         if not state.is_playing():
-            await self.bot.say('Not playing any music right now...')
+            field = 'Not playing any music right now...'
+            embed.add_field(name='Queue', value=field)
+            await self.bot.say(embed=embed)
             return
 
-        voter = ctx.message.author
-        if voter == state.current.requester:
-            await self.bot.say('Requester requested skipping song...')
-            state.skip()
-        elif voter.id not in state.skip_votes:
-            state.skip_votes.add(voter.id)
-            total_votes = len(state.skip_votes)
-            need_votes = 1
-            if total_votes >= need_votes:
-                await self.bot.say('Skip vote passed, skipping song...')
-                state.skip()
-            else:
-                await self.bot.say('Skip vote added, currently at [{}/{}]'.format(total_votes, need_votes))
-        else:
-            await self.bot.say('You have already voted to skip this song.')
-        print('skip end')
+        field = 'Skipping song...'
+        embed.add_field(name='Queue', value=field)
+        await self.bot.say(embed=embed)
+        state.skip()
 
     @commands.command(pass_context=True, no_pm=True)
     async def playing(self, ctx):
@@ -276,29 +284,35 @@ class Music:
 
         state = self.get_voice_state(ctx.message.server)
         if state.current is None:
-            await self.bot.say('Not playing anything.')
+            field = 'Not playing anything.'
         else:
-            skip_count = len(state.skip_votes)
-            await self.bot.say('Now playing {} [skips: {}/3]'.format(state.current, skip_count))
+            field = 'Now playing {}'.format(state.current)
+
+        embed = discord.Embed(
+            colour=discord.Color.blue()
+        )
+        # embed.set_author(name="It's me", url="https://vk.com/kaless1n")
+        embed.add_field(name='Queue', value=field)
+        await self.bot.say(embed=embed)
 
     @commands.command(pass_context=True, no_pm=True)
     async def queue(self, ctx, ):
         state = self.get_voice_state(ctx.message.server)
         if state.entries_history is []:
-            await self.bot.say('Queue is empty')
+            field = 'Queue is empty'
         else:
-            embed = discord.Embed(
-                title='Queue',
-                colou=discord.Color.blue()
-            )
-            embed.set_author(name="It's me", url="https://vk.com/kaless1n")
-            queue = ''
+            field = ''
             i = 0
             for entry in state.entries_history:
                 i += 1
-                queue += str(i) + '. ' + '[' + str(entry) + ']' + '(https://www.youtube.com/watch?v=d4oG8_3j58U)' + "\n"
-            embed.set_footer(text=queue)
-            await self.bot.say(embed=embed)
+                field += str(i) + '. ' + str(entry) + "\n"
+
+        embed = discord.Embed(
+            colour=discord.Color.blue()
+        )
+        # embed.set_author(name="It's me", url="https://vk.com/kaless1n")
+        embed.add_field(name='Queue', value=field)
+        await self.bot.say(embed=embed)
 
 
 bot = commands.Bot(command_prefix=commands.when_mentioned_or('='), description='A playlist example for discord.py')
