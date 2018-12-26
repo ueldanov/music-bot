@@ -15,9 +15,9 @@ if not discord.opus.is_loaded():
 
 
 class VoiceEntry:
-    def __init__(self, player, message=None):
-        self.requester = message.author if message is not None else ''
-        self.channel = message.channel if message is not None else ''
+    def __init__(self, player, channel, author=None):
+        self.requester = author
+        self.channel = channel
         self.player = player
 
     def __str__(self):
@@ -31,6 +31,7 @@ class VoiceEntry:
 class VoiceState:
     def __init__(self, bot):
         self.current = None
+        self.channel = None
         self.voice = None
         self.bot = bot
         self.auto = True
@@ -59,6 +60,29 @@ class VoiceState:
     def toggle_next(self):
         self.bot.loop.create_task(self.play_next())
 
+    async def play(self, song, message=None, channel=None):
+        opts = {
+            'default_search': 'auto',
+            'quiet': True,
+        }
+        try:
+            player = await self.voice.create_ytdl_player(song, ytdl_options=opts, after=self.toggle_next)
+        except Exception as e:
+            fmt = 'An error occurred while processing this request: ```py\n{}: {}\n```'
+            if channel:
+                await self.bot.send_message(channel, fmt.format(type(e).__name__, e))
+        else:
+            player.volume = 0.6
+            requester = message.author if message else None
+            if channel is None:
+                channel = self.channel
+            else:
+                self.channel = channel
+            entry = VoiceEntry(player, channel, requester)
+            if message:
+                await self.bot.say('Enqueued ' + str(entry))
+            await self.songs.put(entry)
+
     async def play_next(self):
         print('play_next')
         opts = {
@@ -67,27 +91,16 @@ class VoiceState:
         }
         player = self.current.player
         try:
-            print('try')
             yt_id = player.yt.extract_info(player.url, download=False)["entries"][0]["id"]
         except:
             print('except')
             yt_id = player.yt.extract_info(player.url, download=False)["id"]
-        print('fin')
         self.songs_history.append(yt_id)
         related_song = Related().url_to_first_related(yt_id, self.songs_history)
-        print('related: ' + str(related_song))
         if related_song is None:
             print('Can\'t find related songs')
         else:
-            try:
-                player = await self.voice.create_ytdl_player(related_song, ytdl_options=opts, after=self.toggle_next)
-            except Exception as e:
-                fmt = 'An error occurred while processing this request: py\n{}: {}\n'
-            else:
-                player.volume = 0.6
-                entry = VoiceEntry(player)
-                await self.songs.put(entry)
-        print('play next end')
+            await self.play(related_song)
         self.bot.loop.call_soon_threadsafe(self.play_next_song.set)
 
     async def audio_player_task(self):
@@ -177,26 +190,13 @@ class Music:
         https://rg3.github.io/youtube-dl/supportedsites.html
         """
         state = self.get_voice_state(ctx.message.server)
-        opts = {
-            'default_search': 'auto',
-            'quiet': True,
-        }
 
         if state.voice is None:
             success = await ctx.invoke(self.summon)
             if not success:
                 return
 
-        try:
-            player = await state.voice.create_ytdl_player(song, ytdl_options=opts, after=state.toggle_next)
-        except Exception as e:
-            fmt = 'An error occurred while processing this request: ```py\n{}: {}\n```'
-            await self.bot.send_message(ctx.message.channel, fmt.format(type(e).__name__, e))
-        else:
-            player.volume = 0.6
-            entry = VoiceEntry(player, ctx.message)
-            await self.bot.say('Enqueued ' + str(entry))
-            await state.songs.put(entry)
+        await state.play(song, ctx.message, ctx.message.channel)
 
     @commands.command(pass_context=True, no_pm=True)
     async def volume(self, ctx, value: int):
