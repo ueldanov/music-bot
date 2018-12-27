@@ -4,8 +4,8 @@ import time
 from related import Related
 from discord.ext import commands
 from dotenv import load_dotenv
+from pathlib import Path  # python3 only
 import os
-from pprint import pprint
 
 if not discord.opus.is_loaded():
     # the 'opus' library here is opus.dll on windows
@@ -326,7 +326,8 @@ async def on_ready():
     print('Logged in as:\n{0} (ID: {0.id})'.format(bot.user))
 
 
-load_dotenv()
+env_path = Path('.') / '.env'
+load_dotenv(dotenv_path=env_path)
 TOKEN = os.getenv("token")
 YT_KEY = os.getenv("yt_key")
 bot.run(TOKEN)
