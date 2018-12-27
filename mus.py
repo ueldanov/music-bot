@@ -3,6 +3,8 @@ import discord
 import time
 from related import Related
 from discord.ext import commands
+from dotenv import load_dotenv
+import os
 from pprint import pprint
 
 if not discord.opus.is_loaded():
@@ -100,7 +102,7 @@ class VoiceState:
         except:
             yt_id = player.yt.extract_info(player.url, download=False)["id"]
         self.songs_history.append(yt_id)
-        related_song = Related().url_to_first_related(yt_id, self.songs_history)
+        related_song = Related(YT_KEY).url_to_first_related(yt_id, self.songs_history)
         if related_song is None:
             print('Can\'t find related songs')
         else:
@@ -286,13 +288,13 @@ class Music:
         if state.current is None:
             field = 'Not playing anything.'
         else:
-            field = 'Now playing {}'.format(state.current)
+            field = str(state.current)
 
         embed = discord.Embed(
             colour=discord.Color.blue()
         )
         # embed.set_author(name="It's me", url="https://vk.com/kaless1n")
-        embed.add_field(name='Queue', value=field)
+        embed.add_field(name='Now playing', value=field)
         await self.bot.say(embed=embed)
 
     @commands.command(pass_context=True, no_pm=True)
@@ -324,4 +326,7 @@ async def on_ready():
     print('Logged in as:\n{0} (ID: {0.id})'.format(bot.user))
 
 
-bot.run('')
+load_dotenv()
+TOKEN = os.getenv("token")
+YT_KEY = os.getenv("yt_key")
+bot.run(TOKEN)

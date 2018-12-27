@@ -2,8 +2,8 @@ import requests
 
 
 class Related:
-    def __init__(self, ):
-        self.yt_api_key = ''
+    def __init__(self, key):
+        self.yt_api_key = key
         self.max_results = 10
 
     def related_songs(self, yt_id):
@@ -30,7 +30,6 @@ class Related:
         )
         try:
             if result.json()['items'][0]['snippet']['categoryId'] == '10':
-                print(yt_id)
                 return True
             else:
                 return False
