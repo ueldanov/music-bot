@@ -314,7 +314,16 @@ class Music:
         )
         # embed.set_author(name="It's me", url="https://vk.com/kaless1n")
         embed.add_field(name='Queue', value=field)
-        await self.bot.say(embed=embed)
+        msg = await self.bot.say(embed=embed)
+
+        # if num > 1 and num < maxPage:
+        #     print('{}/{}
+
+        toReact = ['⏪', '⏩']
+
+        for reaction in toReact:
+            await bot.add_reaction(msg, reaction)
+
 
 
 bot = commands.Bot(command_prefix=commands.when_mentioned_or('='), description='A playlist example for discord.py')
