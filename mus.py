@@ -40,7 +40,7 @@ class VoiceState:
         self.channel = None
         self.voice = None
         self.bot = bot
-        self.auto = True
+        self.auto_play = True
         self.play_next_song = asyncio.Event()
         self.songs = asyncio.Queue()
         self.songs_history = []
@@ -79,7 +79,7 @@ class VoiceState:
             if channel:
                 await self.bot.send_message(channel, fmt.format(type(e).__name__, e))
         else:
-            player.volume = 0.3
+            player.volume = 0.5
             requester = message.author if message else None
             if channel is None:
                 channel = self.channel
@@ -96,17 +96,18 @@ class VoiceState:
             self.entries_history.append(entry)
 
     async def play_next(self):
-        player = self.current.player
-        try:
-            yt_id = player.yt.extract_info(player.url, download=False)["entries"][0]["id"]
-        except:
-            yt_id = player.yt.extract_info(player.url, download=False)["id"]
-        self.songs_history.append(yt_id)
-        related_song = Related(YT_KEY).url_to_first_related(yt_id, self.songs_history)
-        if related_song is None:
-            print('Can\'t find related songs')
-        else:
-            await self.play(related_song)
+        if self.songs.empty() and self.auto_play:
+            player = self.current.player
+            try:
+                yt_id = player.yt.extract_info(player.url, download=False)["entries"][0]["id"]
+            except:
+                yt_id = player.yt.extract_info(player.url, download=False)["id"]
+            self.songs_history.append(yt_id)
+            related_song = Related(YT_KEY).url_to_first_related(yt_id, self.songs_history)
+            if related_song is None:
+                print('Can\'t find related songs')
+            else:
+                await self.play(related_song)
         self.bot.loop.call_soon_threadsafe(self.play_next_song.set)
 
     async def audio_player_task(self):
@@ -135,6 +136,7 @@ class Music:
     def __init__(self, bot):
         self.bot = bot
         self.voice_states = {}
+        self.queue_page_size = 10
 
     def get_voice_state(self, server):
         state = self.voice_states.get(server.id)
@@ -281,6 +283,15 @@ class Music:
         state.skip()
 
     @commands.command(pass_context=True, no_pm=True)
+    async def auto(self, ctx):
+        state = self.get_voice_state(ctx.message.server)
+        state.auto_play = not state.auto_play
+        if state.auto_play:
+            await self.bot.say('Auto play is enabled')
+        else:
+            await self.bot.say('Auto play is disabled')
+
+    @commands.command(pass_context=True, no_pm=True)
     async def playing(self, ctx):
         """Shows info about the currently played song."""
 
@@ -297,33 +308,81 @@ class Music:
         embed.add_field(name='Now playing', value=field)
         await self.bot.say(embed=embed)
 
-    @commands.command(pass_context=True, no_pm=True)
-    async def queue(self, ctx, ):
-        state = self.get_voice_state(ctx.message.server)
+    def queue_content(self, state, page_number):
+        print('page_number')
+        print(page_number)
         if state.entries_history is []:
             field = 'Queue is empty'
         else:
             field = ''
-            i = 0
-            for entry in state.entries_history:
-                i += 1
-                field += str(i) + '. ' + str(entry) + "\n"
+            starts_with = page_number * self.queue_page_size
+            ends_with = page_number * self.queue_page_size + self.queue_page_size
+            for i in range(starts_with, ends_with):
+                try:
+                    entry = state.entries_history[i]
+                    field += str(i + 1) + '. ' + str(entry) + "\n"
+                except IndexError:
+                    pass
 
         embed = discord.Embed(
             colour=discord.Color.blue()
         )
         # embed.set_author(name="It's me", url="https://vk.com/kaless1n")
+        if not field:
+            return None
         embed.add_field(name='Queue', value=field)
-        msg = await self.bot.say(embed=embed)
+        return embed
 
-        # if num > 1 and num < maxPage:
-        #     print('{}/{}
+    @commands.command(pass_context=True, no_pm=True)
+    async def queue(self, ctx, ):
+        state = self.get_voice_state(ctx.message.server)
 
-        toReact = ['⏪', '⏩']
+        first_time = True
+        page_number = 0
+        while True:
+            if first_time:
+                embed = self.queue_content(state, page_number)
+                msg = await self.bot.say(embed=embed)
+                first_time = False
 
-        for reaction in toReact:
-            await bot.add_reaction(msg, reaction)
+            toReact = ['⏪', '⏩']
 
+            if len(state.entries_history) > self.queue_page_size:
+                for reaction in toReact:
+                    await bot.add_reaction(msg, reaction)
+
+            def check_reaction(reaction, user):
+                e = str(reaction.emoji)
+                return e.startswith(('⏪', '⏩'))
+
+            res = await bot.wait_for_reaction(message=msg, user=ctx.message.author, timeout=30, check=check_reaction)
+            if res is None:
+                print('no reaction')
+                # for reaction in toReact:
+                # await bot.remove_reaction(msg, reaction)
+                # await bot.delete_message(ctx.message)
+                # await bot.delete_message(msg)
+                break
+            elif '⏪' in str(res.reaction.emoji):
+                print('back reaction')
+                page_number = page_number - 1
+                if page_number < 0:
+                    page_number = 0
+                elif page_number > len(state.entries_history):
+                    page_number = len(state.entries_history)
+                embed = self.queue_content(state, page_number)
+                if embed:
+                    await bot.edit_message(msg, embed=embed)
+            elif '⏩' in str(res.reaction.emoji):
+                print('forward reaction')
+                page_number = page_number + 1
+                if page_number < 0:
+                    page_number = 0
+                elif page_number > len(state.entries_history):
+                    page_number = len(state.entries_history)
+                embed = self.queue_content(state, page_number)
+                if embed:
+                    await bot.edit_message(msg, embed=embed)
 
 
 bot = commands.Bot(command_prefix=commands.when_mentioned_or('='), description='A playlist example for discord.py')
